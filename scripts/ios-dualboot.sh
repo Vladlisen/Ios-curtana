@@ -39,13 +39,17 @@ head_sha() { head -c "$2" "$1" | sha; }
 preflight() {
   if [ -z "${IOSDB_PART:-}" ]; then
     [ "$(id -u)" = 0 ] || die "run as root: su -c sh $0 $*"
-    dev=$(getprop ro.product.device 2>/dev/null || true)
-    case "$dev" in
-      curtana|joyeuse|excalibur|gram) ;;
-      *) die "this script is for miatoll phones (curtana/joyeuse/excalibur/gram), found '$dev'" ;;
-    esac
   fi
-  mkdir -p "$DIR"
+  # Unified ROMs (crDroid, LineageOS) report "miatoll"; the hardware name is in ro.boot.hwname.
+  found=""
+  for prop in ro.product.device ro.product.vendor.device ro.boot.hwname; do
+    dev=$(getprop "$prop" 2>/dev/null || true)
+    found="$found $dev"
+    case "$dev" in
+      miatoll|curtana|joyeuse|excalibur|gram) mkdir -p "$DIR"; return ;;
+    esac
+  done
+  die "this script is for miatoll phones (curtana/joyeuse/excalibur/gram), found:$found"
 }
 
 is_ours() {

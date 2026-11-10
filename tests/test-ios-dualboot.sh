@@ -7,6 +7,14 @@ export IOSDB_DIR="$T/store" IOSDB_PART="$T/recovery"
 fail() { echo "FAIL: $*"; exit 1; }
 run() { sh "$SCRIPT" "$@"; }
 
+# Fake getprop: crDroid's unified build reports ro.product.device=miatoll.
+mkdir "$T/bin"
+# shellcheck disable=SC2016
+printf '#!/bin/sh\ncase "$1" in ro.product.device) echo "${FAKE_DEVICE:-miatoll}" ;; esac\n' > "$T/bin/getprop"
+chmod +x "$T/bin/getprop"
+PATH="$T/bin:$PATH"
+FAKE_DEVICE=lavender sh "$SCRIPT" status >/dev/null 2>&1 && fail "accepted a non miatoll phone"
+
 # Stock recovery: 8 MiB of recognisable data.
 { printf 'ANDROID!'; head -c 8388600 /dev/urandom; } > "$IOSDB_PART"
 cp "$IOSDB_PART" "$T/stock"

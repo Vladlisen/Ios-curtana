@@ -21,7 +21,25 @@ the stock recovery is backed up first and can be restored from the phone.
 - Unlocked bootloader. Mi Unlock is the only step that needs a PC, and only once.
 - Root through Magisk, and a terminal app such as Termux.
 - A miatoll phone: curtana (Redmi Note 9S, the tested target), joyeuse, excalibur or gram.
-- Custom recovery (TWRP/OrangeFox) is replaced. Use `restore` before flashing ROM zips.
+  Unified ROMs such as crDroid report the device as `miatoll`, which is accepted.
+
+## OrangeFox and ROM updates
+
+The iOS image takes the place of OrangeFox. The first `install` saves OrangeFox as the backup,
+and `restore` brings it back. To update crDroid or flash zips:
+
+1. `restore` (OrangeFox is back), then reboot to OrangeFox and flash as usual.
+2. Back in Android, `install` the iOS image again.
+
+Some ROM zips also overwrite `recovery`. Check `status` after updating.
+
+## Split storage
+
+If `userdata` is already split into an Android part and an iOS part, this setup leaves both
+untouched. It only writes `recovery` and `/sdcard/ios-dualboot/`. The UniXNU port cannot use
+internal storage yet: its storage stage is planned and, as written, targets `userdata`, which
+would wipe Android. Before any future build that mounts a root filesystem, make sure it points
+at the iOS partition, not at `userdata`.
 
 ## Build the image
 
