@@ -1,0 +1,106 @@
+name: dualboot
+
+# test: checks the on-phone installer against fake partitions.
+# build (manual): the UniXNU miatoll image, built as qdizax-w/UniXNU-miatoll's package workflow
+# does, bundled with the installer. The image embeds the secret UNIXNU_UNIQUE_CHIP_ID, so it
+# belongs to one phone: download the artifact, then delete the run.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      device_ref:
+        description: "qdizax-w/UniXNU-miatoll revision"
+        type: string
+        default: "4f6cd721f82daba4d4ff09bd87ec57fef62ba36b"
+      unixnu_ref:
+        description: "UniXNU revision"
+        type: string
+        default: "82b847c4ac3f68a57024b3082ffa3a03442defd9"
+      uefi_ref:
+        description: "uefi-miatoll revision (Mu-Silicium 3.6: later releases do not boot miatoll)"
+        type: string
+        default: "miatoll-3.6"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck -s sh scripts/ios-dualboot.sh tests/test-ios-dualboot.sh
+      - run: make test
+
+  build:
+    if: github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: macos-15
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: dualboot
+      - uses: actions/checkout@v4
+        with:
+          repository: qdizax-w/UniXNU-miatoll
+          ref: ${{ inputs.device_ref }}
+          path: device
+          submodules: recursive
+      - uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU
+          ref: ${{ inputs.unixnu_ref }}
+          path: UniXNU
+          submodules: recursive
+      - uses: actions/checkout@v4
+        with:
+          repository: qdizax-w/uefi-miatoll
+          ref: ${{ inputs.uefi_ref }}
+          path: uefi-miatoll
+          submodules: recursive
+      - name: xcode
+        run: |
+          x=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$x" ] || { echo "no Xcode 26 on this image"; exit 1; }
+          echo "DEVELOPER_DIR=$x/Contents/Developer" >> "$GITHUB_ENV"
+      - name: tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          brew install dtc llvm lld llvm@18 cmake mtools ninja bison pkgconf
+          mkdir -p "$RUNNER_TEMP/ipsw" && gh release download v3.1.741 -R blacktop/ipsw \
+            --pattern 'ipsw_3.1.741_macOS_universal.tar.gz' -O - | tar -xz -C "$RUNNER_TEMP/ipsw"
+          dirname "$(find "$RUNNER_TEMP/ipsw" -type f -name ipsw | head -1)" >> "$GITHUB_PATH"
+          B=$(brew --prefix)
+          printf '%s\n' "$B/opt/llvm/bin" "$B/opt/lld/bin" "$B/opt/bison/bin" >> "$GITHUB_PATH"
+      - name: platform seed
+        env:
+          seed: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
+        run: |
+          [[ "$seed" =~ ^[0-9a-fA-F]{8}$ ]] || {
+            echo 'Set the repository secret UNIXNU_UNIQUE_CHIP_ID (8 hex digits).' >&2; exit 1; }
+      - name: package
+        working-directory: device
+        env:
+          UNIXNU_UNIQUE_CHIP_ID: ${{ secrets.UNIXNU_UNIQUE_CHIP_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+          UNIXNU_EDK2: ${{ github.workspace }}/uefi-miatoll/Mu_Basecore
+        run: |
+          # clang 18 on purpose: newer clang makes firmware that resets miatoll at the Mi logo.
+          export CLANG_BIN="$(brew --prefix llvm@18)/bin/"
+          scripts/package.sh --os 17 --uefi ../uefi-miatoll
+      - name: bundle
+        run: |
+          mkdir -p bundle
+          cp "$(ls UniXNU/out/miatoll/*/*/boot/boot.img | head -1)" bundle/ios-boot.img
+          cp dualboot/scripts/ios-dualboot.sh dualboot/README.md bundle/
+          (cd bundle && shasum -a 256 ios-boot.img > ios-boot.img.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-dualboot
+          retention-days: 3
+          if-no-files-found: error
+          path: bundle/
