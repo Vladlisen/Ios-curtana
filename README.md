@@ -77,6 +77,27 @@ su -c sh /sdcard/Download/ios-dualboot.sh restore                               
 su -c sh /sdcard/Download/ios-dualboot.sh status
 ```
 
+## HakiOS build (iOS 16.5)
+
+[HakiOS](https://github.com/qdizax-w/hakios-xnu-kernel) with
+[its miatoll port](https://github.com/qdizax-w/hakios-sm7125) is the iOS port that runs on this
+phone today. **Actions → hakios-miatoll** builds it, pinned to one HakiOS revision:
+
+| Artifact | Contents |
+| --- | --- |
+| `hakios-miatoll-boot` | `miatoll-boot.img` (Mu-Silicium 3.6 UEFI + loader, USB mode), `MIATOLL_UEFI.fd`, `loader.efi` |
+| `hakios-miatoll-kernel` | `hakios-kernel` (XNU 8796 with the miatoll drivers), the userland programs and Mesa |
+
+These hold no Apple files. Two parts come from your own iOS 16.5 (20F66) iPhone X IPSW, on the
+computer that prepares the phone (see HakiOS `docs/getting-started/building.md`):
+
+- the loader's iPhone identity (`make loader`). With the placeholder in this build, iOS does not start.
+- the system image written to the `darwin` partition (`sysimage/unpack.sh`, `userland/build.sh`,
+  `tools/darwin-write.py`).
+
+The boot image in this build is the USB-mode loader: it waits for `xl` from a computer. A
+one-shot image (kernel and arguments inside, no USB) is what goes on `recovery` for the dual boot.
+
 ## Development
 
 `make test` runs the installer against file-backed fake partitions. CI runs it with shellcheck.
